@@ -301,6 +301,10 @@
                         sets = { [DEFAULT_QUESTIONS.id]: JSON.parse(JSON.stringify(DEFAULT_QUESTIONS)) };
                         currentSetId = DEFAULT_QUESTIONS.id;
                     }
+                    // Ensure currentSetId is valid
+                    if (!sets[currentSetId]) {
+                         currentSetId = Object.keys(sets)[0];
+                    }
                 } catch (e) {
                     console.error("Error loading data", e);
                     resetToDefault();
@@ -375,8 +379,8 @@
                 inputEl.value = '';
                 
                 // Move rope
-                // Team 1 (Left) correct => Rope moves Left (Negative)
-                // Team 2 (Right) correct => Rope moves Right (Positive)
+                // Team 1 (Left) correct => Rope moves Left (Negative X)
+                // Team 2 (Right) correct => Rope moves Right (Positive X)
                 const move = team === 'team1' ? -1 : 1;
                 gameState.ropePosition += move;
 
