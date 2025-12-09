@@ -4,15 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Арқан Тартыс: Информатика</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+    
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel Standalone for JSX/TSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
     <style>
         body { font-family: 'Roboto', sans-serif; }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
     </style>
 <script type="importmap">
 {
@@ -26,6 +50,655 @@
 </head>
 <body class="bg-gray-100 overflow-hidden h-screen text-gray-800">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+
+    <script type="text/babel" data-presets="react,typescript">
+        const { useState, useEffect, useRef } = React;
+        const { createRoot } = ReactDOM;
+
+        // --- TYPES (Virtual, stripped by Babel) ---
+        // interface Question { id: string; text: string; answer: string; }
+        // interface QuestionSet { id: string; name: string; questions: Question[]; }
+        // type Language = 'kz' | 'ru' | 'en';
+
+        // --- CONSTANTS ---
+        const STORAGE_KEY = 'arkan_tartys_data_v3';
+        const WINNING_SCORE = 5;
+
+        const DEFAULT_QUESTIONS = {
+          id: 'default-set',
+          name: 'Жалпы сұрақтар (Мысал)',
+          questions: [
+              { id: '1', text: '1 байтта неше бит бар?', answer: '8' },
+              { id: '2', text: 'Ақпаратты өңдейтін негізгі құрылғы?', answer: 'процессор' },
+              { id: '3', text: 'Компьютердің "миы" қалай аталады?', answer: 'процессор' },
+              { id: '4', text: 'Мәтіндік ақпаратты сақтайтын файл кеңейтілуі?', answer: 'txt' },
+              { id: '5', text: 'Интернеттегі парақшаларды қарауға арналған бағдарлама?', answer: 'браузер' }
+          ]
+        };
+
+        const KEYBOARD_LAYOUTS = {
+          en: [
+              ['1','2','3','4','5','6','7','8','9','0'],
+              ['Q','W','E','R','T','Y','U','I','O','P'],
+              ['A','S','D','F','G','H','J','K','L'],
+              ['Z','X','C','V','B','N','M']
+          ],
+          ru: [
+              ['1','2','3','4','5','6','7','8','9','0'],
+              ['Й','Ц','У','К','Е','Н','Г','Ш','Щ','З','Х','Ъ'],
+              ['Ф','Ы','В','А','П','Р','О','Л','Д','Ж','Э'],
+              ['Я','Ч','С','М','И','Т','Ь','Б','Ю']
+          ],
+          kz: [
+              ['Ә','І','Ң','Ғ','Ү','Ұ','Қ','Ө','Һ'], 
+              ['Й','Ц','У','К','Е','Н','Г','Ш','Щ','З','Х','Ъ'],
+              ['Ф','Ы','В','А','П','Р','О','Л','Д','Ж','Э'],
+              ['Я','Ч','С','М','И','Т','Ь','Б','Ю']
+          ]
+        };
+
+        // --- COMPONENTS ---
+
+        // KazakhPlayer.tsx
+        const KazakhPlayer = ({ color, isFlipped }) => {
+          return (
+            <svg 
+              width="40" 
+              height="60" 
+              viewBox="0 0 100 150" 
+              className={`player-svg ${isFlipped ? 'scale-x-[-1]' : ''}`}
+              style={{ overflow: 'visible' }}
+            >
+              <circle cx="50" cy="25" r="20" fill={color} stroke="black" strokeWidth="2" />
+              <path 
+                d="M50 45 L50 100 L20 145 M50 100 L80 145" 
+                stroke={color} 
+                strokeWidth="12" 
+                strokeLinecap="round" 
+                fill="none" 
+              />
+              <path 
+                d="M50 55 L20 80 L80 80" 
+                stroke={color} 
+                strokeWidth="10" 
+                strokeLinecap="round" 
+                fill="none" 
+              />
+              <path d="M30 25 Q50 10 70 25" fill="none" stroke="white" strokeWidth="2" />
+            </svg>
+          );
+        };
+
+        // GameVisuals.tsx
+        const GameVisuals = ({ ropePosition }) => {
+          const offset = ropePosition * 50; 
+
+          return (
+            <div className="relative w-full h-64 bg-gray-50 border-y border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
+                <div className="absolute bottom-10 w-full h-1 bg-gray-300"></div>
+                <div className="absolute h-full w-0.5 bg-gray-300 border-dashed border-l-2 z-0"></div>
+                <div className="absolute top-4 bg-gray-800 text-white text-xs px-2 py-1 rounded z-10 font-bold tracking-wider">START</div>
+
+                <div 
+                  id="rope-assembly" 
+                  className="flex items-center justify-center relative z-10"
+                  style={{ transform: `translateX(${offset}px)`, transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+                >
+                    <div className="flex space-x-[-15px] mr-2">
+                        {[1,2,3].map(i => (
+                          <KazakhPlayer key={`t1-${i}`} color="#2563EB" />
+                        ))}
+                    </div>
+
+                    <div className="relative w-96 h-3 bg-amber-800 rounded flex items-center justify-center shadow-sm">
+                        <div className="absolute w-full h-full opacity-30" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, #000 5px, #000 6px)' }}></div>
+                        <div className="w-4 h-12 bg-red-600 border-2 border-white shadow-md absolute -top-4"></div>
+                    </div>
+
+                    <div className="flex space-x-[-15px] ml-2 flex-row-reverse">
+                        {[1,2,3].map(i => (
+                          <KazakhPlayer key={`t2-${i}`} color="#DC2626" isFlipped />
+                        ))}
+                    </div>
+                </div>
+            </div>
+          );
+        };
+
+        // TeacherPanel.tsx
+        const TeacherPanel = ({
+          isOpen, onClose, sets, currentSetId, onChangeSet, onCreateSet, onDeleteSet, onAddQuestion, onDeleteQuestion
+        }) => {
+          const [showCreateSet, setShowCreateSet] = useState(false);
+          const [newSetName, setNewSetName] = useState('');
+          const [newQText, setNewQText] = useState('');
+          const [newQAnswer, setNewQAnswer] = useState('');
+
+          if (!isOpen) return null;
+
+          const currentSet = sets[currentSetId];
+
+          const handleCreateSet = () => {
+            if (newSetName.trim()) {
+              onCreateSet(newSetName.trim());
+              setNewSetName('');
+              setShowCreateSet(false);
+            }
+          };
+
+          const handleAddQuestion = () => {
+            if (newQText.trim() && newQAnswer.trim()) {
+              onAddQuestion({ text: newQText.trim(), answer: newQAnswer.trim() });
+              setNewQText('');
+              setNewQAnswer('');
+            }
+          };
+
+          return (
+            <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+              <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-[slideInRight_0.3s_ease-out]">
+                <div className="p-4 bg-gray-800 text-white flex justify-between items-center shadow-md">
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        Мұғалім панелі
+                    </h2>
+                    <button onClick={onClose} className="hover:bg-gray-700 p-1 rounded transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 18 18"/></svg>
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <h3 className="font-bold text-blue-900 mb-3 uppercase text-sm tracking-wider">Сабақтар / Кластар</h3>
+                        
+                        {!showCreateSet ? (
+                          <div className="space-y-3">
+                              <div>
+                                  <label className="block text-xs font-semibold text-gray-500 mb-1">Қазіргі бөлім:</label>
+                                  <select 
+                                    value={currentSetId} 
+                                    onChange={(e) => onChangeSet(e.target.value)} 
+                                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                  >
+                                    {Object.values(sets).map((set) => (
+                                      <option key={set.id} value={set.id}>{set.name} ({set.questions.length} сұрақ)</option>
+                                    ))}
+                                  </select>
+                              </div>
+                              <div className="flex gap-2">
+                                  <button onClick={() => setShowCreateSet(true)} className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2 px-3 rounded flex items-center justify-center gap-1 transition-colors">
+                                      Жаңа бөлім
+                                  </button>
+                                  <button onClick={onDeleteSet} className="bg-red-100 hover:bg-red-200 text-red-700 p-2 rounded transition-colors" title="Бөлімді жою">
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                  </button>
+                              </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 animate-fade-in">
+                              <label className="block text-sm font-medium text-gray-700">Бөлім атауы:</label>
+                              <input 
+                                type="text" 
+                                value={newSetName}
+                                onChange={(e) => setNewSetName(e.target.value)}
+                                placeholder="Мысалы: 5-сынып" 
+                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 outline-none"
+                              />
+                              <div className="flex gap-2">
+                                  <button onClick={handleCreateSet} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1 rounded">Құру</button>
+                                  <button onClick={() => setShowCreateSet(false)} className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-1 rounded">Болдырмау</button>
+                              </div>
+                          </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="font-bold text-gray-800 uppercase text-sm tracking-wider">Сұрақтар редакторы</h3>
+                            <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded-full">{currentSet?.questions.length || 0} сұрақ</span>
+                        </div>
+
+                        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm mb-4">
+                            <div className="mb-3">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">Сұрақ:</label>
+                                <textarea 
+                                  value={newQText}
+                                  onChange={(e) => setNewQText(e.target.value)}
+                                  className="w-full p-2 border border-gray-300 rounded focus:border-blue-500 outline-none text-sm" 
+                                  rows={2}
+                                ></textarea>
+                            </div>
+                            <div className="mb-3">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">Дұрыс жауап:</label>
+                                <input 
+                                  type="text" 
+                                  value={newQAnswer}
+                                  onChange={(e) => setNewQAnswer(e.target.value)}
+                                  className="w-full p-2 border border-gray-300 rounded focus:border-blue-500 outline-none text-sm"
+                                />
+                            </div>
+                            <button onClick={handleAddQuestion} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded flex items-center justify-center gap-2 transition-colors font-medium">
+                                Сұрақты қосу
+                            </button>
+                        </div>
+
+                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                            {currentSet?.questions.map((q, idx) => (
+                              <div key={q.id} className="bg-gray-50 p-3 rounded border border-gray-200 flex justify-between items-start group">
+                                <div className="text-sm">
+                                  <p className="font-medium text-gray-800">{idx + 1}. {q.text}</p>
+                                  <p className="text-green-600 text-xs mt-1 font-bold">{q.answer}</p>
+                                </div>
+                                <button onClick={() => onDeleteQuestion(q.id)} className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                              </div>
+                            ))}
+                            {(!currentSet || currentSet.questions.length === 0) && (
+                              <p className="text-center text-gray-400 text-sm py-4">Сұрақтар жоқ</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        // --- APP LOGIC ---
+        function App() {
+          const [sets, setSets] = useState({});
+          const [currentSetId, setCurrentSetId] = useState('');
+          
+          const [ropePosition, setRopePosition] = useState(0);
+          const [winner, setWinner] = useState(null);
+          const [qTeam1, setQTeam1] = useState(null);
+          const [qTeam2, setQTeam2] = useState(null);
+          
+          const [inputTeam1, setInputTeam1] = useState('');
+          const [inputTeam2, setInputTeam2] = useState('');
+          const [msgTeam1, setMsgTeam1] = useState(null);
+          const [msgTeam2, setMsgTeam2] = useState(null);
+          const [showTeacherPanel, setShowTeacherPanel] = useState(false);
+          
+          // Independent keyboard states
+          const [keyboardLang1, setKeyboardLang1] = useState('kz');
+          const [keyboardLang2, setKeyboardLang2] = useState('kz');
+          
+          const inputRef1 = useRef(null);
+          const inputRef2 = useRef(null);
+
+          useEffect(() => {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                setSets(parsed.sets || {});
+                setCurrentSetId(parsed.currentSetId || '');
+                
+                if (!parsed.sets || Object.keys(parsed.sets).length === 0) {
+                  resetToDefault();
+                } else if (!parsed.sets[parsed.currentSetId]) {
+                  setCurrentSetId(Object.keys(parsed.sets)[0]);
+                }
+              } catch (e) {
+                resetToDefault();
+              }
+            } else {
+              resetToDefault();
+            }
+          }, []);
+
+          useEffect(() => {
+            if (Object.keys(sets).length > 0) {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify({ sets, currentSetId }));
+            }
+          }, [sets, currentSetId]);
+
+          useEffect(() => {
+            if (currentSetId && sets[currentSetId] && !qTeam1) {
+              resetGame();
+            }
+          }, [currentSetId, sets]);
+
+          const resetToDefault = () => {
+            const defaultSets = { [DEFAULT_QUESTIONS.id]: { ...DEFAULT_QUESTIONS } };
+            setSets(defaultSets);
+            setCurrentSetId(DEFAULT_QUESTIONS.id);
+          };
+
+          const getRandomQuestion = (excludeId) => {
+            if (!sets[currentSetId]) return null;
+            const allQs = sets[currentSetId].questions;
+            if (allQs.length === 0) return null;
+            
+            const available = allQs.filter(q => q.id !== excludeId);
+            if (available.length === 0) return allQs[0];
+            
+            const idx = Math.floor(Math.random() * available.length);
+            return available[idx];
+          };
+
+          const resetGame = () => {
+            setRopePosition(0);
+            setWinner(null);
+            setInputTeam1('');
+            setInputTeam2('');
+            setMsgTeam1(null);
+            setMsgTeam2(null);
+            
+            setTimeout(() => {
+              setQTeam1(getRandomQuestion());
+              setQTeam2(getRandomQuestion());
+            }, 0);
+          };
+
+          const handleAnswer = (team) => {
+            if (winner) return;
+
+            const inputVal = team === 'team1' ? inputTeam1 : inputTeam2;
+            const question = team === 'team1' ? qTeam1 : qTeam2;
+            const setInput = team === 'team1' ? setInputTeam1 : setInputTeam2;
+            const setMsg = team === 'team1' ? setMsgTeam1 : setMsgTeam2;
+            const setQ = team === 'team1' ? setQTeam1 : setQTeam2;
+
+            if (!question) return;
+
+            if (inputVal.trim().toLowerCase() === question.answer.toLowerCase()) {
+              setMsg({ text: 'Дұрыс!', type: 'success' });
+              setInput('');
+              setTimeout(() => setMsg(null), 1500);
+
+              const move = team === 'team1' ? -1 : 1;
+              const newPos = ropePosition + move;
+              setRopePosition(newPos);
+
+              if (newPos <= -WINNING_SCORE) endGame('team1');
+              else if (newPos >= WINNING_SCORE) endGame('team2');
+              else {
+                setQ(getRandomQuestion(question.id));
+              }
+            } else {
+              setMsg({ text: 'Қате жауап', type: 'error' });
+              setTimeout(() => setMsg(null), 1500);
+            }
+          };
+
+          const endGame = (winTeam) => {
+            setWinner(winTeam);
+            if (window.confetti) {
+              window.confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { y: 0.6 }
+              });
+            }
+          };
+
+          const insertChar = (char, team) => {
+            if (team === 'team1') {
+              setInputTeam1(prev => prev + char.toLowerCase());
+              inputRef1.current?.focus();
+            } else {
+              setInputTeam2(prev => prev + char.toLowerCase());
+              inputRef2.current?.focus();
+            }
+          };
+
+          const backspace = (team) => {
+            if (team === 'team1') {
+              setInputTeam1(prev => prev.slice(0, -1));
+              inputRef1.current?.focus();
+            } else {
+              setInputTeam2(prev => prev.slice(0, -1));
+              inputRef2.current?.focus();
+            }
+          };
+
+          const toggleLang = (team) => {
+            const currentLang = team === 'team1' ? keyboardLang1 : keyboardLang2;
+            const setLang = team === 'team1' ? setKeyboardLang1 : setKeyboardLang2;
+
+            if (currentLang === 'kz') setLang('ru');
+            else if (currentLang === 'ru') setLang('en');
+            else setLang('kz');
+          };
+
+          const handleCreateSet = (name) => {
+            const newId = Date.now().toString();
+            const newSet = { id: newId, name, questions: [] };
+            setSets(prev => ({ ...prev, [newId]: newSet }));
+            setCurrentSetId(newId);
+          };
+
+          const handleDeleteSet = () => {
+            if (Object.keys(sets).length <= 1) {
+              alert("Соңғы бөлімді өшіруге болмайды!");
+              return;
+            }
+            if (!confirm("Бұл бөлімді жоюға сенімдісіз бе?")) return;
+            
+            const newSets = { ...sets };
+            delete newSets[currentSetId];
+            setSets(newSets);
+            setCurrentSetId(Object.keys(newSets)[0]);
+          };
+
+          const handleAddQuestion = (qData) => {
+            const q = { ...qData, id: Date.now().toString() };
+            setSets(prev => ({
+              ...prev,
+              [currentSetId]: {
+                ...prev[currentSetId],
+                questions: [...prev[currentSetId].questions, q]
+              }
+            }));
+          };
+
+          const handleDeleteQuestion = (qId) => {
+            setSets(prev => ({
+              ...prev,
+              [currentSetId]: {
+                ...prev[currentSetId],
+                questions: prev[currentSetId].questions.filter(q => q.id !== qId)
+              }
+            }));
+          };
+
+          const renderKeyboard = (team) => {
+            const currentLang = team === 'team1' ? keyboardLang1 : keyboardLang2;
+            const layout = KEYBOARD_LAYOUTS[currentLang];
+            const teamClass = team === 'team1' ? 'kb-team1 text-blue-600' : 'kb-team2 text-red-600';
+            const bgHover = team === 'team1' ? 'hover:bg-blue-50 active:bg-blue-100' : 'hover:bg-red-50 active:bg-red-100';
+
+            return (
+              <div className={`mt-2 p-1.5 rounded-lg bg-black/25 flex flex-col gap-1 select-none animate-fade-in`}>
+                {layout.map((row, rIdx) => (
+                  <div key={rIdx} className="flex justify-center gap-[3px]">
+                    {row.map(char => (
+                      <button 
+                        key={char}
+                        onMouseDown={(e) => { e.preventDefault(); insertChar(char, team); }}
+                        className={`flex-1 h-10 min-w-[20px] rounded bg-white ${teamClass} font-bold text-sm shadow-sm ${bgHover} flex items-center justify-center`}
+                      >
+                        {char}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                <div className="flex justify-center gap-[3px]">
+                  <button 
+                    onMouseDown={(e) => { e.preventDefault(); toggleLang(team); }}
+                    className="flex-[1.5] h-10 rounded bg-gray-200 text-gray-700 font-black text-[10px] shadow-sm hover:bg-gray-300 flex items-center justify-center"
+                  >
+                    {currentLang.toUpperCase()}
+                  </button>
+                  <button 
+                     onMouseDown={(e) => { e.preventDefault(); insertChar(' ', team); }}
+                     className={`flex-[4] h-10 rounded bg-white ${teamClass} font-bold text-xs shadow-sm ${bgHover} flex items-center justify-center`}
+                  >
+                    SPACE
+                  </button>
+                  <button 
+                     onMouseDown={(e) => { e.preventDefault(); backspace(team); }}
+                     className={`flex-[1.5] h-10 rounded bg-white ${teamClass} font-bold text-lg shadow-sm ${bgHover} flex items-center justify-center`}
+                  >
+                    ⌫
+                  </button>
+                  <button 
+                     onMouseDown={(e) => { e.preventDefault(); handleAnswer(team); }}
+                     className={`flex-[1.5] h-10 rounded bg-white ${teamClass} font-bold text-lg shadow-sm ${bgHover} flex items-center justify-center`}
+                  >
+                    ↵
+                  </button>
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div className="flex flex-col h-screen overflow-hidden font-sans">
+              <header className="bg-white shadow-sm py-3 px-6 flex justify-between items-center z-20 shrink-0">
+                <h1 className="text-xl md:text-2xl font-black tracking-tight text-gray-800 uppercase flex items-center gap-2">
+                    АРҚАН ТАРТЫС <span className="text-blue-600">•</span> ИНФОРМАТИКА
+                </h1>
+                <div className="flex items-center gap-4">
+                    <span className="text-sm font-medium bg-gray-100 px-3 py-1 rounded-full text-gray-600 hidden sm:inline-block">
+                        {sets[currentSetId]?.name || 'Жүктелуде...'}
+                    </span>
+                    <button onClick={() => setShowTeacherPanel(true)} className="flex items-center gap-2 px-4 py-2 rounded font-bold text-sm transition-colors border bg-white text-gray-600 border-gray-300 hover:bg-gray-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Мұғалім режимі
+                    </button>
+                </div>
+              </header>
+
+              <GameVisuals ropePosition={ropePosition} />
+
+              <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+                <div className="flex-1 bg-blue-600 p-6 flex flex-col justify-center items-center relative overflow-y-auto">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-blue-700"></div>
+                    <h2 className="text-white text-2xl font-black mb-4 bg-blue-800/30 px-6 py-2 rounded-full backdrop-blur-sm">1-КОМАНДА</h2>
+                    
+                    <div className="w-full max-w-lg bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl flex flex-col">
+                        <div className="min-h-[80px] flex items-center justify-center text-center mb-6">
+                            <p className="text-2xl font-bold text-white leading-relaxed drop-shadow-md">
+                                {qTeam1?.text || 'Сұрақ...'}
+                            </p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="relative">
+                                <input 
+                                  ref={inputRef1}
+                                  type="text" 
+                                  inputMode="none"
+                                  value={inputTeam1}
+                                  onChange={(e) => setInputTeam1(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && handleAnswer('team1')}
+                                  placeholder="Жауап..." 
+                                  autoComplete="off"
+                                  disabled={!!winner}
+                                  className="w-full p-4 rounded-lg bg-black/20 border-2 border-white/30 text-white placeholder-blue-200 focus:outline-none focus:border-white focus:bg-black/30 transition-all text-lg font-medium"
+                                />
+                                <div className={`absolute -top-10 left-0 right-0 text-center font-bold text-lg transition-opacity duration-300 ${msgTeam1 ? 'opacity-100' : 'opacity-0'} ${msgTeam1?.type === 'success' ? 'text-green-300' : 'text-yellow-300'}`}>
+                                  {msgTeam1?.text}
+                                </div>
+                            </div>
+                            
+                            {!winner && renderKeyboard('team1')}
+
+                            <button 
+                              onClick={() => handleAnswer('team1')} 
+                              disabled={!!winner}
+                              className="w-full bg-white text-blue-600 font-black py-4 rounded-lg hover:bg-blue-50 active:scale-95 transition-all shadow-lg text-xl uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                ЖАУАП БЕРУ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex-1 bg-red-600 p-6 flex flex-col justify-center items-center relative overflow-y-auto">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-red-700"></div>
+                    <h2 className="text-white text-2xl font-black mb-4 bg-red-800/30 px-6 py-2 rounded-full backdrop-blur-sm">2-КОМАНДА</h2>
+                    
+                    <div className="w-full max-w-lg bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl flex flex-col">
+                        <div className="min-h-[80px] flex items-center justify-center text-center mb-6">
+                            <p className="text-2xl font-bold text-white leading-relaxed drop-shadow-md">
+                                {qTeam2?.text || 'Сұрақ...'}
+                            </p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="relative">
+                                <input 
+                                  ref={inputRef2}
+                                  type="text" 
+                                  inputMode="none" 
+                                  value={inputTeam2}
+                                  onChange={(e) => setInputTeam2(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && handleAnswer('team2')}
+                                  placeholder="Жауап..." 
+                                  autoComplete="off"
+                                  disabled={!!winner}
+                                  className="w-full p-4 rounded-lg bg-black/20 border-2 border-white/30 text-white placeholder-red-200 focus:outline-none focus:border-white focus:bg-black/30 transition-all text-lg font-medium"
+                                />
+                                <div className={`absolute -top-10 left-0 right-0 text-center font-bold text-lg transition-opacity duration-300 ${msgTeam2 ? 'opacity-100' : 'opacity-0'} ${msgTeam2?.type === 'success' ? 'text-green-300' : 'text-yellow-300'}`}>
+                                  {msgTeam2?.text}
+                                </div>
+                            </div>
+                            
+                            {!winner && renderKeyboard('team2')}
+
+                            <button 
+                              onClick={() => handleAnswer('team2')}
+                              disabled={!!winner} 
+                              className="w-full bg-white text-red-600 font-black py-4 rounded-lg hover:bg-red-50 active:scale-95 transition-all shadow-lg text-xl uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                ЖАУАП БЕРУ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+              </div>
+
+              {winner && (
+                <div className="fixed inset-0 z-40 bg-black/80 flex items-center justify-center backdrop-blur-sm">
+                  <div className="bg-white p-12 rounded-3xl shadow-2xl text-center max-w-2xl transform scale-110 animate-[fadeIn_0.3s_ease-out]">
+                    <div className="mx-auto mb-6 text-yellow-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                    </div>
+                    <h2 className="text-5xl font-black mb-4 uppercase">
+                      {winner === 'team1' ? '1-КОМАНДА ЖЕҢДІ!' : '2-КОМАНДА ЖЕҢДІ!'}
+                    </h2>
+                    <p className="text-gray-500 mb-8 text-xl">Құттықтаймыз!</p>
+                    <button onClick={resetGame} className="bg-gray-900 text-white text-xl font-bold py-4 px-10 rounded-full hover:bg-gray-800 transition-colors flex items-center gap-3 mx-auto shadow-xl hover:shadow-2xl">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+                        Қайта ойнау
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <TeacherPanel 
+                isOpen={showTeacherPanel} 
+                onClose={() => setShowTeacherPanel(false)}
+                sets={sets}
+                currentSetId={currentSetId}
+                onChangeSet={setCurrentSetId}
+                onCreateSet={handleCreateSet}
+                onDeleteSet={handleDeleteSet}
+                onAddQuestion={handleAddQuestion}
+                onDeleteQuestion={handleDeleteQuestion}
+              />
+            </div>
+          );
+        }
+
+        const container = document.getElementById("root");
+        const root = createRoot(container);
+        root.render(<App />);
+
+    </script>
 </body>
 </html>
